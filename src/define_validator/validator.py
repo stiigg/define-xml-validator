@@ -15,6 +15,8 @@ from lxml import etree
 from defusedxml import ElementTree as DefusedET
 import xmlschema
 
+from .advanced_validations import AdvancedValidations
+
 
 class DefineXMLValidator:
     """
@@ -100,11 +102,22 @@ class DefineXMLValidator:
         self.root = None
         self._parse_xml_secure()
         
+        # Initialize advanced validations
+        self.advanced_validations = AdvancedValidations(
+            self.root, 
+            self.namespaces, 
+            self.config
+        )
+        
         # Validation results storage
         self.validation_results = {
             'layer1_xsd_schema': {'status': None, 'errors': [], 'duration_ms': 0},
             'layer2_structural': {'status': None, 'errors': [], 'duration_ms': 0},
             'layer3_business_rules': {'status': None, 'errors': [], 'duration_ms': 0},
+            'layer4_terminology': {'status': None, 'errors': [], 'duration_ms': 0},
+            'layer5_completeness': {'status': None, 'errors': [], 'warnings': [], 'duration_ms': 0},
+            'layer6_computational_methods': {'status': None, 'errors': [], 'warnings': [], 'duration_ms': 0},
+            'layer7_advanced_patterns': {'status': None, 'errors': [], 'warnings': [], 'duration_ms': 0},
         }
     
     def _generate_validation_id(self) -> str:
@@ -271,6 +284,82 @@ class DefineXMLValidator:
         self.validation_results['layer1_xsd_schema'] = result
         return result
     
+    def validate_layer2_structural(self) -> Dict:
+        """
+        Layer 2: Structural Validation
+        Validates required ODM elements and attributes
+        
+        Returns:
+            Dict with validation status and errors
+        """
+        start_time = datetime.now()
+        
+        self.logger.info("\n" + "="*80)
+        self.logger.info("LAYER 2: STRUCTURAL VALIDATION")
+        self.logger.info("="*80)
+        
+        errors = []
+        
+        # CHECK 2.1: Required ODM root attributes
+        self.logger.info("\n[CHECK 2.1] ODM root element attributes...")
+        
+        required_attrs = ['FileOID', 'FileType', 'ODMVersion', 'CreationDateTime']
+        for attr in required_attrs:
+            if not self.root.get(attr):
+                errors.append({
+                    'error_id': 'STR-001',
+                    'severity': 'CRITICAL',
+                    'check': 'odm_root_attributes',
+                    'attribute': attr,
+                    'message': f"Missing required ODM attribute: {attr}"
+                })
+                self.logger.error(f"  ✗ Missing attribute: {attr}")
+        
+        if not [e for e in errors if e['error_id'] == 'STR-001']:
+            self.logger.info(f"  ✓ All {len(required_attrs)} required ODM attributes present")
+        
+        # CHECK 2.2: Study/MetaDataVersion presence
+        self.logger.info("\n[CHECK 2.2] Study and MetaDataVersion elements...")
+        
+        study = self.root.xpath('//odm:Study', namespaces=self.namespaces)
+        if not study:
+            errors.append({
+                'error_id': 'STR-002',
+                'severity': 'CRITICAL',
+                'check': 'study_element',
+                'message': 'Missing required Study element'
+            })
+            self.logger.error("  ✗ Study element not found")
+        else:
+            self.logger.info("  ✓ Study element present")
+        
+        mdv = self.root.xpath('//odm:MetaDataVersion', namespaces=self.namespaces)
+        if not mdv:
+            errors.append({
+                'error_id': 'STR-003',
+                'severity': 'CRITICAL',
+                'check': 'metadataversion_element',
+                'message': 'Missing required MetaDataVersion element'
+            })
+            self.logger.error("  ✗ MetaDataVersion element not found")
+        else:
+            self.logger.info("  ✓ MetaDataVersion element present")
+        
+        # Determine status
+        critical_errors = [e for e in errors if e['severity'] == 'CRITICAL']
+        status = 'FAIL' if critical_errors else 'PASS'
+        
+        duration_ms = (datetime.now() - start_time).total_seconds() * 1000
+        
+        result = {
+            'status': status,
+            'errors': errors,
+            'duration_ms': round(duration_ms, 2)
+        }
+        
+        self.validation_results['layer2_structural'] = result
+        return result
+    
     def validate_layer3_business_rules(self) -> Dict:
         """
         Layer 3: Business Rules Validation (Most Critical)
@@ -399,7 +488,7 @@ class DefineXMLValidator:
     
     def run_full_validation(self) -> Dict:
         """
-        Execute all validation layers
+        Execute all 7 validation layers
         
         Returns:
             Dict with final status, validation ID, results, and audit trail
@@ -411,34 +500,61 @@ class DefineXMLValidator:
             handlers=[logging.StreamHandler(sys.stdout)]
         )
         
-        self.logger.info(f"\nStarting validation: {self.define_path}")
+        self.logger.info(f"\nStarting full 7-layer validation: {self.define_path}")
         self.logger.info(f"Validation ID: {self.audit_trail['validation_id']}")
         self.logger.info(f"File hash: {self.audit_trail['define_xml_sha256']}")
         
-        # Run validation layers
+        # Run validation layers 1-3 (core validator)
         self.validate_layer1_xsd_schema()
+        self.validate_layer2_structural()
         self.validate_layer3_business_rules()
+        
+        # Run validation layers 4-7 (advanced validations)
+        self.validation_results['layer4_terminology'] = \
+            self.advanced_validations.validate_layer4_terminology()
+        
+        self.validation_results['layer5_completeness'] = \
+            self.advanced_validations.validate_layer5_completeness()
+        
+        self.validation_results['layer6_computational_methods'] = \
+            self.advanced_validations.validate_layer6_computational_methods()
+        
+        self.validation_results['layer7_advanced_patterns'] = \
+            self.advanced_validations.validate_layer7_advanced_patterns()
         
         # Determine final status
         all_statuses = [r['status'] for r in self.validation_results.values()]
         final_status = 'FAIL' if 'FAIL' in all_statuses else 'PASS'
         
-        # Count total errors
-        total_errors = sum(len(r['errors']) for r in self.validation_results.values())
+        # Count total errors and warnings
+        total_errors = sum(len(r.get('errors', [])) for r in self.validation_results.values())
+        total_warnings = sum(len(r.get('warnings', [])) for r in self.validation_results.values())
         critical_errors = sum(
-            len([e for e in r['errors'] if e.get('severity') == 'CRITICAL'])
+            len([e for e in r.get('errors', []) if e.get('severity') == 'CRITICAL'])
             for r in self.validation_results.values()
         )
         
         self.logger.info("\n" + "="*80)
-        self.logger.info(f"FINAL STATUS: {final_status}")
-        self.logger.info(f"Total errors: {total_errors} ({critical_errors} critical)")
+        self.logger.info(f"FINAL VALIDATION STATUS: {final_status}")
         self.logger.info("="*80)
+        self.logger.info(f"Total errors: {total_errors} ({critical_errors} critical)")
+        self.logger.info(f"Total warnings: {total_warnings}")
+        self.logger.info("="*80)
+        
+        # Layer-by-layer summary
+        self.logger.info("\nLayer Summary:")
+        for layer_name, result in self.validation_results.items():
+            status_icon = "✓" if result['status'] == 'PASS' else ("⚠" if result['status'] == 'WARNING' else "✗")
+            self.logger.info(
+                f"  {status_icon} {layer_name.replace('_', ' ').title()}: {result['status']} "
+                f"({len(result.get('errors', []))} errors, {len(result.get('warnings', []))} warnings)"
+            )
         
         return {
             'final_status': final_status,
             'validation_id': self.audit_trail['validation_id'],
             'total_errors': total_errors,
+            'total_warnings': total_warnings,
             'critical_errors': critical_errors,
             'results': self.validation_results,
             'audit_trail': self.audit_trail
@@ -463,4 +579,4 @@ class DefineXMLValidator:
         with open(output_path, 'w') as f:
             json.dump(report, f, indent=2)
         
-        self.logger.info(f"\nReport exported: {output_path}")
+        self.logger.info(f"\nValidation report exported: {output_path}")
