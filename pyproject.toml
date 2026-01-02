@@ -1,0 +1,84 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "define-xml-validator"
+version = "1.0.0"
+description = "FDA-compliant define.xml validator with 7-layer validation for CDISC clinical trial submissions"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Christian Baghai", email = "your.email@example.com"}
+]
+keywords = ["cdisc", "define.xml", "fda", "validation", "clinical-trials", "sdtm", "adam"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Healthcare Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+
+dependencies = [
+    "lxml>=5.1.0",
+    "defusedxml>=0.7.1",
+    "xmlschema>=2.5.0",
+    "pandas>=2.1.4",
+    "numpy>=1.26.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.7.0",
+]
+ml = [
+    "scikit-learn>=1.4.0",
+    "shap>=0.44.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/stiigg/define-xml-validator"
+Documentation = "https://github.com/stiigg/define-xml-validator/blob/main/docs/README.md"
+Repository = "https://github.com/stiigg/define-xml-validator"
+Issues = "https://github.com/stiigg/define-xml-validator/issues"
+
+[project.scripts]
+define-validator = "define_validator.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--cov=define_validator",
+    "--cov-report=html",
+    "--cov-report=term-missing",
+]
+
+[tool.black]
+line-length = 100
+target-version = ['py310']
+include = '\.pyi?$'
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
